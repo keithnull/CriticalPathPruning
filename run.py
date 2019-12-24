@@ -1,126 +1,67 @@
 import numpy as np
 import json
+import argparse
+import operator
 from CIFAR_DataLoader import CifarDataManager, display_cifar
-from vggNet import Model
-
-'''
-Configuration:
-    1. learning rate
-    2. L1 loss penalty
-    3. Lambda cotrol gate threshold
-'''
-learning_rate = 0.1
-L1_loss_penalty = 0.03
-threshold = 0.0
-
-layer_names = ['FC14/gate:0',
-               'Conv7/composite_function/gate:0',
-               'Conv12/composite_function/gate:0',
-               'Conv2/composite_function/gate:0',
-               'Conv4/composite_function/gate:0',
-               'Conv1/composite_function/gate:0',
-               'Conv6/composite_function/gate:0',
-               'Conv10/composite_function/gate:0',
-               'Conv9/composite_function/gate:0',
-               'FC15/gate:0',
-               'Conv13/composite_function/gate:0',
-               'Conv5/composite_function/gate:0',
-               'Conv3/composite_function/gate:0',
-               'Conv11/composite_function/gate:0',
-               'Conv8/composite_function/gate:0'
-               ]
+from vggNet import Model, model_structure
 
 
-def calculate_total_by_threshold(classid):
+def calculate_total_by_weights(class_id, count):
     name_shape_match = [
-        {'name': 'FC14/gate:0', 'shape': 4096},
-        {'name': 'Conv7/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv12/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv2/composite_function/gate:0', 'shape': 64},
-        {'name': 'Conv4/composite_function/gate:0', 'shape': 128},
-        {'name': 'Conv1/composite_function/gate:0', 'shape': 64},
-        {'name': 'Conv6/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv10/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv9/composite_function/gate:0', 'shape': 512},
-        {'name': 'FC15/gate:0', 'shape': 4096},
-        {'name': 'Conv13/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv5/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv3/composite_function/gate:0', 'shape': 128},
-        {'name': 'Conv11/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv8/composite_function/gate:0', 'shape': 512}
+        {
+            "name": layer["name"],
+            "shape": [0, ] * layer["shape"],
+        }
+        for layer in model_structure
     ]
-    for i in range(len(name_shape_match)):
-        name_shape_match[i]['shape'] = name_shape_match[i]['shape']*[0]
-    for i in range(499):
-        jsonpath = "./ImageEncoding/class" + str(classid) + "-pic" + str(i) + ".json"
-        with open(jsonpath, 'r') as f:
+    for pic_id in range(count):
+        jsonpath = "./ImageEncoding/class" + str(class_id) + "-pic" + str(pic_id) + ".json"
+        with open(jsonpath, "r") as f:
             dataset = json.load(f)
-            for gate in range(len(dataset)):
-                for index in range(len(name_shape_match)):
-                    if name_shape_match[index]['name'] == dataset[gate]['layer_name']:
-                        tmp = dataset[gate]['layer_lambda']
-                        for conv in range(len(tmp)):
-                            if tmp[conv] > 0.1:  # threshold 0.1
-                                name_shape_match[index]['shape'][conv] += 1
-                            else:
-                                pass
-                    else:
-                        pass
-    json_write_path = "./ClassEncoding/class" + str(classid) + ".json"
-    with open(json_write_path, 'w') as g:
-        json.dump(name_shape_match, g, sort_keys=True, indent=4, separators=(',', ':'))
-
-
-def calculate_total_by_weights(classid):
-    name_shape_match = [
-        {'name': 'FC14/gate:0', 'shape': 4096},
-        {'name': 'Conv7/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv12/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv2/composite_function/gate:0', 'shape': 64},
-        {'name': 'Conv4/composite_function/gate:0', 'shape': 128},
-        {'name': 'Conv1/composite_function/gate:0', 'shape': 64},
-        {'name': 'Conv6/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv10/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv9/composite_function/gate:0', 'shape': 512},
-        {'name': 'FC15/gate:0', 'shape': 4096},
-        {'name': 'Conv13/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv5/composite_function/gate:0', 'shape': 256},
-        {'name': 'Conv3/composite_function/gate:0', 'shape': 128},
-        {'name': 'Conv11/composite_function/gate:0', 'shape': 512},
-        {'name': 'Conv8/composite_function/gate:0', 'shape': 512}
-    ]
+            assert len(dataset) == len(name_shape_match)
+            for layer_id in range(len(dataset)):
+                assert name_shape_match[layer_id]["name"] == dataset[layer_id]["layer_name"]
+                name_shape_match[layer_id]["shape"] = map(
+                    operator.add,
+                    name_shape_match[layer_id]["shape"],
+                    dataset[layer_id]["layer_lambda"]
+                )
+    # generator -> list, for json dump
     for i in range(len(name_shape_match)):
-        name_shape_match[i]['shape'] = name_shape_match[i]['shape']*[0]
-    for i in range(499):
-        jsonpath = "./ImageEncoding/class" + str(classid) + "-pic" + str(i) + ".json"
-        with open(jsonpath, 'r') as f:
-            dataset = json.load(f)
-            for gate in range(len(dataset)):
-                for index in range(len(name_shape_match)):
-                    if name_shape_match[index]['name'] == dataset[gate]['layer_name']:
-                        tmp = dataset[gate]['layer_lambda']
-                        for conv in range(len(tmp)):
-                            name_shape_match[index]['shape'][conv] += tmp[conv]
-                    else:
-                        pass
-    json_write_path = "./ClassEncoding/class" + str(classid) + ".json"
-    with open(json_write_path, 'w') as g:
-        json.dump(name_shape_match, g, sort_keys=True, indent=4, separators=(',', ':'))
+        name_shape_match[i]["shape"] = list(name_shape_match[i]["shape"])
+    json_write_path = "./ClassEncoding/class" + str(class_id) + ".json"
+    with open(json_write_path, "w") as g:
+        json.dump(name_shape_match, g, sort_keys=True, indent=4, separators=(",", ":"))
 
 
-d = CifarDataManager()
-model = Model(
-    learning_rate=learning_rate,
-    L1_loss_penalty=L1_loss_penalty,
-    threshold=threshold
-)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Critical Path Pruning")
+    parser.add_argument("classes", metavar="C", type=int, nargs="+",
+                        help="Image class in CIFAR-100 (-1 for using all classes)")
+    parser.add_argument("-r", "--learning_rate", help="Learning rate in optimizing control gates",
+                        default=0.1, required=False)
+    parser.add_argument("-t", "--threshold", help="Threshold for pruning",
+                        default=0.0, required=False)
+    parser.add_argument("-p", "--l1_loss_penalty", help="L1-loss prnalty in optimizing control gates",
+                        default=0.03, required=False)
+    parser.add_argument("-n", "--number", help="Number of images in each class", default=500, type=int, required=False)
+    return parser.parse_args()
 
 
-def run():
-    # choose class data
-    train_images, train_labels = d.train.generateSpecializedData(class_id=1, count=5)
-    model.encode_class_data(1, train_images)
-    calculate_total_by_weights(0)
+def run(args):
+    d = CifarDataManager()
+    model = Model(
+        learning_rate=args.learning_rate,
+        L1_loss_penalty=args.l1_loss_penalty,
+        threshold=args.threshold
+    )
+    target_classes = range(100) if args.classes[0] == -1 else args.classes
+    for class_id in target_classes:
+        train_images, train_labels = d.train.generateSpecializedData(class_id, args.number)
+        model.encode_class_data(class_id, train_images)
+        calculate_total_by_weights(class_id, args.number)
 
 
-run()
+if __name__ == "__main__":
+    args = parse_args()
+    run(args)

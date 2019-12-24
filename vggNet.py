@@ -1,6 +1,5 @@
 import pickle
 import random
-# from decimal import *
 import json
 import keras
 import numpy as np
@@ -9,77 +8,77 @@ from sklearn.utils import shuffle
 import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7"
 
-# ================== VGG Network Model with Control Gates ==================
+model_structure = [
+    {'name': 'Conv1/composite_function/gate:0', 'shape': 64},
+    {'name': 'Conv2/composite_function/gate:0', 'shape': 64},
+    {'name': 'Conv3/composite_function/gate:0', 'shape': 128},
+    {'name': 'Conv4/composite_function/gate:0', 'shape': 128},
+    {'name': 'Conv5/composite_function/gate:0', 'shape': 256},
+    {'name': 'Conv6/composite_function/gate:0', 'shape': 256},
+    {'name': 'Conv7/composite_function/gate:0', 'shape': 256},
+    {'name': 'Conv8/composite_function/gate:0', 'shape': 512},
+    {'name': 'Conv9/composite_function/gate:0', 'shape': 512},
+    {'name': 'Conv10/composite_function/gate:0', 'shape': 512},
+    {'name': 'Conv11/composite_function/gate:0', 'shape': 512},
+    {'name': 'Conv12/composite_function/gate:0', 'shape': 512},
+    {'name': 'Conv13/composite_function/gate:0', 'shape': 512},
+    {'name': 'FC14/gate:0', 'shape': 4096},
+    {'name': 'FC15/gate:0', 'shape': 4096},
+]
+
+# ================== VGG Network Model with Control Gates ================
 
 
 class Model():
     def __init__(self, learning_rate=0.1, L1_loss_penalty=0.02, threshold=0.1):
-        '''
-        For one input image :
-            1. Store all the gates infomation
-            2. Store all the gates values
-        '''
+        # record gate variables
         self.AllGateVariables = dict()
         self.AllGateVariableValues = list()
-
-        '''
-        For encode images super parameters:
-            1. learning rate
-            2. L1 penalty
-            3. Lambda control gate threshold
-        '''
+        # hyperparameters
         self.learning_rate = learning_rate
         self.L1_loss_penalty = L1_loss_penalty
-        self.threshold = threshold
+        self.threshold = threshold  # Lambda control gate threshold
+        # build and restore graph only once
+        self.graph = tf.Graph()
+        self.build_model(self.graph, 100)
+        self.restore_model(self.graph)
 
-    '''
-    Wrap Functions:
-        1. model.build_model()
-        2. model.restore_model()
-        3. model.encode_input()
-    '''
+    # ===================================================================
+    # Encode and save for a batch of data
+    # ===================================================================
 
     def compute_encoding(self, data_input):
-        self.AllGateVariableValues.clear()
-        self.AllGateVariables.clear()
-
-        graph = tf.Graph()
-        self.build_model(graph, 100)
-        self.restore_model(graph)
+        for gate_variable in self.AllGateVariables.values():
+            gate_variable.load([1.0, ] * gate_variable.get_shape().as_list()[0], self.sess)
         generatedGates = self.encode_input(data_input)
-        self.close_sess()
-
         return generatedGates
 
-    '''
-    Encode and save for a batch of data
-    '''
-
     def encode_class_data(self, class_id, train_images):
-        # filename = "./innerclass/class"+str(class_id)+"gate.json"
         for i in range(len(train_images)):
-            generatedGate = self.compute_encoding(train_images[i].reshape((1, 32, 32, 3)))  # generatedGate is a list of dicts{layername:xx, shape:xx, lambda:xx}
+            generatedGate = self.compute_encoding(train_images[i].reshape((1, 32, 32, 3)))
+            # generatedGate is a list of dicts{layername:xx, shape:xx, lambda:xx}
             picname = "class" + str(class_id) + "-pic" + str(i)
             jsonpath = "./ImageEncoding/" + picname + ".json"
             with open(jsonpath, 'w') as f:
                 json.dump(generatedGate, f, sort_keys=True, indent=4, separators=(',', ':'))
 
-    '''
-    Restore the original network weights
-    '''
+    # ===================================================================
+    # Wrap Functions:
+    #     1. model.build_model()
+    #     2. model.restore_model()
+    #     3. model.encode_input()
+    # ===================================================================
 
     def restore_model(self, graph):
-        savedVariable = {}
-
-        # If GPU is needed
+        """
+        Restore the original VGG16 network weights
+        """
         config = tf.ConfigProto()
         config.gpu_options.allow_growth = True
         self.sess = tf.Session(graph=graph, config=config)
-        # Else if CPU needed
-        # self.sess = tf.Session(graph = graph)
         self.sess.run(self.init)
-
         with graph.as_default():
+            savedVariable = {}
             for i in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES):
                 variable = i
                 name = i.name
@@ -94,29 +93,22 @@ class Model():
                         continue
                 name = i.name[:-2]
                 savedVariable[name] = variable
+            # only restore variables in savedVariable
             saver = tf.train.Saver(savedVariable)
-            # saver = tf.train.Saver(max_to_keep = None)
             saver.restore(self.sess, "vggNet/augmentation.ckpt-120")
-            # print("Restored successfully!")
-
-        # print(tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES))
-        # print(tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES))
-
-    '''
-    Build VGG Network with Control Gate Lambdas
-    '''
 
     def build_model(self, graph, label_count):
+        """
+        Build VGG Network with Control Gate Lambdas
+        """
         with graph.as_default():
-            '''
-            Place Holders:
-                1. input_x: data
-                2. input_y: original predicted labels
-                3. learning rate
-                4. drop keeping probability: no drop layer actually
-                5. whether in training mode: always False
-                6. penalty: regularization
-            '''
+            # Place Holders:
+            #     1. input_x: data
+            #     2. input_y: original predicted labels
+            #     3. learning rate
+            #     4. drop keeping probability: no drop layer actually
+            #     5. whether in training mode: always False
+            #     6. penalty: regularization
             self.xs = tf.placeholder("float", shape=[None, 32, 32, 3])
             self.ys_orig = tf.placeholder("float", shape=[None, label_count])
             self.lr = tf.placeholder("float", shape=[])
@@ -124,9 +116,7 @@ class Model():
             self.is_training = tf.placeholder("bool", shape=[])
             self.penalty = tf.placeholder(tf.float32)
 
-            '''
-            VGG Network Model Construction with Control Gates
-            '''
+            # VGG Network Model Construction with Control Gates
             with tf.variable_scope("Conv1", reuse=tf.AUTO_REUSE):
                 current = self.batch_activ_conv(self.xs, 3, 64, 3, self.is_training, self.keep_prob)
             with tf.variable_scope("Conv2", reuse=tf.AUTO_REUSE):
@@ -169,11 +159,8 @@ class Model():
                 self.ys_pred = tf.matmul(current, Wfc) + bfc
 
             self.ys_pred_softmax = tf.nn.softmax(self.ys_pred)
-            '''
-            Loss Definition
-            '''
-            # prediction = tf.nn.softmax(ys_)
-            # conv_value = tf.add_n([tf.reduce_sum(tf.abs(w)) for w in convValues])
+
+            # Loss Definition
             self.cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                 logits=self.ys_pred, labels=self.ys_orig
             ))
@@ -181,27 +168,21 @@ class Model():
             self.l1_loss = l1_loss * self.penalty
             self.total_loss = self.l1_loss + self.cross_entropy
 
-            '''
-            Optimizer
-            '''
-            self.train_step = tf.train.MomentumOptimizer(self.lr, 0.9, use_nesterov=True).minimize(self.total_loss)
+            # Optimizer
+            self.train_step = tf.train.MomentumOptimizer(self.lr, 0.9, use_nesterov=True).minimize(self.total_loss, var_list=self.AllGateVariables.values())
 
-            '''
-            Check whether correct
-            '''
+            # Check correctness
             correct_prediction = tf.equal(tf.argmax(self.ys_orig, 1), tf.argmax(self.ys_pred, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
 
+            # Init
             self.init = tf.global_variables_initializer()
 
-    '''
-    Given a image input
-    Produce a lambda code
-    '''
-
     def encode_input(self, input_data):
-        generateGate = dict()
-
+        """
+        Given an image input
+        Produce a lambda code
+        """
         learning_rate = self.learning_rate
         L1_loss_penalty = self.L1_loss_penalty
         threshold = self.threshold
@@ -215,11 +196,11 @@ class Model():
         })
 
         tmpLoss = 1000
+        generateGate = dict()
         for epoch in range(100):
             if epoch == 50:
                 learning_rate /= 10
                 # L1_loss_penalty *= 10
-
             self.sess.run(self.train_step, feed_dict={
                 self.xs: input_data,
                 self.ys_orig: label_orig,
@@ -228,8 +209,7 @@ class Model():
                 self.is_training: False,
                 self.penalty: L1_loss_penalty
             })
-
-            [cross_entropy, L1_loss, accuracy] = self.sess.run([self.cross_entropy, self.l1_loss, self.accuracy], feed_dict={
+            cross_entropy, L1_loss, accuracy = self.sess.run([self.cross_entropy, self.l1_loss, self.accuracy], feed_dict={
                 self.xs: input_data,
                 self.ys_orig: label_orig,
                 self.lr: learning_rate,
@@ -237,47 +217,9 @@ class Model():
                 self.is_training: False,
                 self.penalty: L1_loss_penalty
             })
-
             print("Epoch: {}: Cross_Entropy: {}, L1_loss: {}, Accuracy: {}".format(
                 epoch, cross_entropy, L1_loss, accuracy))
-
-            # print(self.AllGateVariables.keys())
-            '''
-                dict_keys(
-                    [
-                        'Conv2/composite_function/gate:0',
-                        'FC14/gate:0',
-                        'Conv5/composite_function/gate:0',
-                        'Conv13/composite_function/gate:0',
-                        'FC15/gate:0',
-                        'Conv9/composite_function/gate:0',
-                        'Conv3/composite_function/gate:0',
-                        'Conv7/composite_function/gate:0',
-                        'Conv10/composite_function/gate:0',
-                        'Conv6/composite_function/gate:0',
-                        'Conv4/composite_function/gate:0',
-                        'Conv12/composite_function/gate:0',
-                        'Conv1/composite_function/gate:0',
-                        'Conv11/composite_function/gate:0',
-                        'Conv8/composite_function/gate:0'
-                    ]
-                )
-
-            '''
             newGate = []
-            # Li Dongyue's Version
-
-            # for gate in self.AllGateVariables.values():
-            #     tmp = gate.eval(session=self.sess)
-            #     tmp[tmp < threshold] = 0
-            #     newGate.append(tmp)
-            # if L1_loss == 'nan' or L1_loss > tmpLoss:
-            #     continue
-            # if accuracy > 0.99 and L1_loss != 'nan' and L1_loss < 1000:
-            #     generateGate = np.array(newGate)
-            #     tmpLoss = L1_loss
-
-            # Cao Mengqi's version: Json
             for gate in self.AllGateVariables.keys():
                 tmp = self.AllGateVariables[gate].eval(session=self.sess)
                 tmp[tmp < threshold] = 0
@@ -292,43 +234,18 @@ class Model():
             if accuracy > 0.99 and L1_loss != 'nan' and L1_loss < 1000:
                 generateGate = newGate
                 tmpLoss = L1_loss
-
         # now generatedGate is a list [(layer name, lambda), ...]
         return generateGate
 
-    '''
-    Close Session
-    '''
-
     def close_sess(self):
+        """
+        Close Session
+        """
         self.sess.close()
 
-    '''
-    Function that print out original VGG network weight
-    '''
-    # def print_weights_to_Json(self):
-    #     import json
-    #     from tensorflow.python import pywrap_tensorflow
-    #     model_dir="vggNet/augmentation.ckpt-120" #checkpoint的文件位置
-    #     # Read data from checkpoint file
-    #     reader = pywrap_tensorflow.NewCheckpointReader(model_dir)
-    #     var_to_shape_map = sorted(reader.get_variable_to_shape_map())
-    #     # Print tensor name and values
-    #     layer = dict()
-    #     result = dict()
-    #     for key in var_to_shape_map:
-    #         layer[key] = dict()
-    #         layer[key]["name"] = key
-    #         layer[key]["shape"] = reader.get_tensor(key).shape
-    #         result[key] = {"name": key, "shape": reader.get_tensor(key).shape, "vec": reader.get_tensor(key).tolist()}
-    #     # with open("weights.json","w") as f:
-    #     #     json.dump(result,f, sort_keys=True, indent=4, separators=(',', ':'))
-    #     with open("layers.json","w") as f:
-    #         json.dump(layer,f, sort_keys=True, indent=4, separators=(',', ':'))
-
-    '''
-    Helper Builder Functions: to build model more conveniently
-    '''
+    # ===================================================================
+    # Helper Builder Functions: to build model more conveniently
+    # ===================================================================
 
     def weight_variable_msra(self, shape, name):
         return tf.get_variable(name=name, shape=shape, initializer=tf.contrib.layers.variance_scaling_initializer(), trainable=False)
@@ -365,7 +282,7 @@ class Model():
             current = tf.contrib.layers.batch_norm(current, scale=True, is_training=is_training, updates_collections=None, trainable=False)
             # convValues.append(current)
             current = tf.nn.relu(current)
-            #current = tf.nn.dropout(current, keep_prob)
+            # current = tf.nn.dropout(current, keep_prob)
         return current
 
     def batch_activ_fc(self, current, in_features, out_features, is_training):
@@ -383,11 +300,11 @@ class Model():
         return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
                               padding='VALID')
 
-    '''
-    Helper Data Processing Functions
-    '''
-    # calculate the means and stds for the whole dataset per channel
+    # ===================================================================
+    # Helper Data Processing Functions
+    # ===================================================================
 
+    # calculate the means and stds for the whole dataset per channel
     def measure_mean_and_std(self, images):
         means = []
         stds = []
