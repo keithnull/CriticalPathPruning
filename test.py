@@ -1,4 +1,4 @@
-import os 
+import os
 import _pickle as cPickle
 
 DATA_PATH = "cifar-100-python"
@@ -25,10 +25,12 @@ Mutual Class: snake 78 189
 Mutual Class: spider 79 197
 '''
 
+
 def unpickle(file):
     with open(os.path.join(DATA_PATH, file), 'rb') as fo:
         dict = cPickle.load(fo, encoding='latin1')
         return dict
+
 
 meta_dict = unpickle("meta")
 Cifar_label_names = meta_dict["fine_label_names"]
@@ -40,6 +42,6 @@ Caltech_label_names = [name.split(".")[1] for name in Caltech_label_names]
 
 for Cifar_name in Cifar_label_names:
     if Cifar_name in Caltech_label_names:
-        print("Mutual Class: " + Cifar_name + 
-              " " + str(Cifar_label_names.index(Cifar_name)) + 
-              " " + str(Caltech_label_names.index(Cifar_name)))
+        print("Mutual Class: " + Cifar_name
+              + " " + str(Cifar_label_names.index(Cifar_name))
+              + " " + str(Caltech_label_names.index(Cifar_name)))

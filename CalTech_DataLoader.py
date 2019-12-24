@@ -12,16 +12,18 @@ PATH_Resized = "./CalTech256/ResizedImages"
 '''
 TODO:
     - Shuffle all images to target directory
-    - Record Corresponding Labels 
+    - Record Corresponding Labels
     - Resize Images
     - Generate Train Dataset and Test Dataset
 '''
+
 
 def one_hot(vec, vals=10):
     n = len(vec)
     out = np.zeros((n, vals))
     out[range(n), vec] = 1
     return out
+
 
 class CalTechLoader(object):
     def __init__(self, sourceDirs):
@@ -30,7 +32,7 @@ class CalTechLoader(object):
 
         self._i = 0
         self.imgDirs = sourceDirs
-    
+
     def load(self):
         imageList = []
         labelList = []
@@ -49,13 +51,13 @@ class CalTechLoader(object):
         self.length = len(self.labels)
 
         self.images = self.normalize_images(self.images)
-        
+
         return self
 
     def next_batch(self, batch_size):
         x, y = self.images[self._i:self._i+batch_size], self.labels[self._i:self._i+batch_size]
         self._i = (self._i + batch_size) % len(self.images)
-        return x, one_hot(y, 256) 
+        return x, one_hot(y, 256)
 
     def next_batch_without_onehot(self, batch_size):
         x, y = self.images[self._i:self._i+batch_size], self.labels[self._i:self._i+batch_size]
@@ -79,6 +81,7 @@ class CalTechLoader(object):
             images[:, :, :, i] = ((images[:, :, :, i] - means[i]) / stds[i])
         return images
 
+
 class CalTechDataManager(object):
     def __init__(self):
         self.image_dirs = os.listdir(PATH_Resized)
@@ -90,12 +93,13 @@ class CalTechDataManager(object):
 
         print("-------------------Loading Caltech 256 Dataset Complete--------------------------")
 
+
 def resize_images(new_size, out_fold):
     listDirs = os.listdir(path=PATH)
     if not os.path.exists(out_fold):
         os.makedirs(out_fold)
     for curClasses in listDirs:
-        listImgs = os.listdir(os.path.join(PATH,curClasses))
+        listImgs = os.listdir(os.path.join(PATH, curClasses))
         for imgName in listImgs:
             try:
                 image = os.path.join(PATH, curClasses, imgName)
@@ -103,21 +107,22 @@ def resize_images(new_size, out_fold):
                 imgName = imgName.strip(".jpg")
                 classNum, imgNum = imgName.split("_")
                 img = Image.open(image)
-                img = img.resize((int(new_size),int(new_size)),Image.ANTIALIAS)
-                
+                img = img.resize((int(new_size), int(new_size)), Image.ANTIALIAS)
+
                 imgNum = str(random.randint(100000, 999999))
-                newName = imgNum + "_" + classNum 
+                newName = imgNum + "_" + classNum
                 newPath = os.path.join(out_fold, newName + ".jpg")
-                img.save(newPath,"JPEG",quality=90)
+                img.save(newPath, "JPEG", quality=90)
             except:
                 pass
+
 
 def display_images(images, size):
     n = len(images)
     plt.figure()
     plt.gca().set_axis_off()
     im = np.vstack([np.hstack([images[np.random.choice(n)] for i in range(size)])
-    for i in range(size)])
+                    for i in range(size)])
     plt.imshow(im)
     plt.show()
 

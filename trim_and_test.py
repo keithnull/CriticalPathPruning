@@ -4,11 +4,11 @@ import numpy as np
 d = CifarDataManager()
 
 
-model = TrimmedModel(target_class_id= np.random.randint(100,size=10),
+model = TrimmedModel(target_class_id=np.random.randint(100, size=10),
                      multiPruning=True)
 
 '''
-Todo List: 
+Todo List:
     1. Modify the accuracy in trimmed network (Done)
 '''
 for _ in range(50):
@@ -19,7 +19,3 @@ for _ in range(50):
     model.assign_weight()
     model.test_accuracy(test_images, test_labels)
     break
-
-
-
-
