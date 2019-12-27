@@ -6,7 +6,8 @@ import numpy as np
 import tensorflow as tf
 from sklearn.utils import shuffle
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "1"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 model_structure = [
     {'name': 'Conv1/composite_function/gate:0', 'shape': 64},
@@ -38,8 +39,10 @@ class Model():
         self.learning_rate = learning_rate
         self.L1_loss_penalty = L1_loss_penalty
         self.threshold = threshold  # Lambda control gate threshold
+        
         # build and restore graph only once
         self.graph = tf.Graph()
+        
         self.build_model(self.graph, 100)
         self.restore_model(self.graph)
 
@@ -57,6 +60,7 @@ class Model():
         for i in range(len(train_images)):
             generatedGate = self.compute_encoding(train_images[i].reshape((1, 32, 32, 3)))
             # generatedGate is a list of dicts{layername:xx, shape:xx, lambda:xx}
+            print("class" + str(class_id) + "-pic" + str(i))
             picname = "class" + str(class_id) + "-pic" + str(i)
             jsonpath = "./ImageEncoding/" + picname + ".json"
             with open(jsonpath, 'w') as f:
@@ -101,6 +105,8 @@ class Model():
         """
         Build VGG Network with Control Gate Lambdas
         """
+
+
         with graph.as_default():
             # Place Holders:
             #     1. input_x: data
@@ -115,6 +121,8 @@ class Model():
             self.keep_prob = tf.placeholder(tf.float32)
             self.is_training = tf.placeholder("bool", shape=[])
             self.penalty = tf.placeholder(tf.float32)
+
+            
 
             # VGG Network Model Construction with Control Gates
             with tf.variable_scope("Conv1", reuse=tf.AUTO_REUSE):
@@ -159,7 +167,6 @@ class Model():
                 self.ys_pred = tf.matmul(current, Wfc) + bfc
 
             self.ys_pred_softmax = tf.nn.softmax(self.ys_pred)
-
             # Loss Definition
             self.cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
                 logits=self.ys_pred, labels=self.ys_orig
@@ -167,14 +174,12 @@ class Model():
             l1_loss = tf.add_n([tf.reduce_sum(tf.abs(w)) for w in self.AllGateVariableValues])
             self.l1_loss = l1_loss * self.penalty
             self.total_loss = self.l1_loss + self.cross_entropy
-
             # Optimizer
-            self.train_step = tf.train.MomentumOptimizer(self.lr, 0.9, use_nesterov=True).minimize(self.total_loss, var_list=self.AllGateVariables.values())
-
+            var_list = tuple(self.AllGateVariables.values())
+            self.train_step = tf.train.MomentumOptimizer(self.lr, 0.9, use_nesterov=True).minimize(self.total_loss, var_list=var_list)
             # Check correctness
             correct_prediction = tf.equal(tf.argmax(self.ys_orig, 1), tf.argmax(self.ys_pred, 1))
             self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
-
             # Init
             self.init = tf.global_variables_initializer()
 
@@ -217,8 +222,8 @@ class Model():
                 self.is_training: False,
                 self.penalty: L1_loss_penalty
             })
-            print("Epoch: {}: Cross_Entropy: {}, L1_loss: {}, Accuracy: {}".format(
-                epoch, cross_entropy, L1_loss, accuracy))
+            # print("Epoch: {}: Cross_Entropy: {}, L1_loss: {}, Accuracy: {}".format(
+            #     epoch, cross_entropy, L1_loss, accuracy))
             newGate = []
             for gate in self.AllGateVariables.keys():
                 tmp = self.AllGateVariables[gate].eval(session=self.sess)
