@@ -1,6 +1,7 @@
 # Results of clustering
 kmeansRes/
 nohup.out
+test.py
 
 # VGG Net model
 vggNet
